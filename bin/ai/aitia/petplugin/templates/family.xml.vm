@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model-family xmlns="http://aitia.ai/game/family"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://aitia.ai/game/family http://www.aitia.ai/xsd/family.xsd">
+
+
+	<family-name>Dummy Model</family-name>
+	<family-version>v0.1</family-version>
+	<family-description>
+	</family-description>
+	<instantiationPolicy>all</instantiationPolicy>
+
+	<simClassName>
+		$simclassname
+	</simClassName>
+	<agentCreationFunction>
+	  createAgents
+	</agentCreationFunction>
+
+	<parameter-declarations>
+	</parameter-declarations>
+
+	<model-messages>
+	</model-messages>
+
+	<agents>
+	</agents>
+
+	<ui>$ui</ui>
+        <admin-ui>$admin_ui</admin-ui>
+</model-family>

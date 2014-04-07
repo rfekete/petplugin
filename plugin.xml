@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension
+         point="org.eclipse.ui.newWizards">
+      <category
+            id="petplugin.category.wizards"
+            name="PET">
+      </category>
+      <wizard
+            category="petplugin.category.wizards"
+            class="ai.aitia.petplugin.wizards.PetProjectWizard"
+            icon="resources/logo32x32.png"
+            id="petplugin.wizards.newproject"
+            name="Pet Project"
+            project="true">
+      </wizard>
+   </extension>
+   <extension
+         id="petplugin.projectNature"
+         point="org.eclipse.core.resources.natures">
+      <runtime>
+         <run
+               class="ai.aitia.petplugin.natures.ProjectNature">
+         </run>
+      </runtime>
+   </extension>
+
+</plugin>

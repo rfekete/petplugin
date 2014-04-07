@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="ElFarol" default="petii">
+
+	<property file="build.properties" />
+	
+	<property name="deployed.model.dir" value="models/${model.name}/models" />
+	
+	<path id="ant-classpath">
+		<fileset dir="${basedir}/lib">
+			<include name="deploy-model-config.jar"/>
+		</fileset>
+	</path>
+	
+	<taskdef name="deploymodelconfig" classpathref="ant-classpath" classname="ai.aitia.contrib.ant.DeployModelConfig" />
+
+	<!-- ================================= 
+          target: petii              
+         ================================= -->
+	<target name="petii" description="generates the petii file from the model-config files, the model, and the GUI files">
+		<zip destfile="${model.name}.petii">
+			<zipfileset dir="${model.configdir}" includes="family.xml" prefix="" />
+			<zipfileset dir="${model.configdir}" includes="simulation*.xml" prefix=""/>
+			<zipfileset dir="war/" excludes="META-INF/**, WEB-INF/**" prefix="WebContent/" />
+			<zipfileset dir="war/WEB-INF/lib" includes="${model.dependencies}" prefix=""/>
+		</zip>
+	</target>
+
+	<!-- ================================= 
+          target: prepare-game-engine              
+         ================================= -->
+	<target name="prepare-game-engine" depends="petii" description="Copies the files necessary for the game-eninge to find the model when run in GWT dev mode.">
+		<copy file="${model.name}.petii" todir="models/${model.name}" />
+		<delete dir="${deployed.model.dir}"/>
+		<mkdir dir="${deployed.model.dir}"/>
+		<deploymodelconfig sourcedir="${model.configdir}" deploydir="${deployed.model.dir}"/>
+	</target>
+
+
+</project>

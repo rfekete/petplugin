@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<simulation xmlns="http://aitia.ai/game/simulation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://aitia.ai/game/simulation
+			    simulation.xsd" 
+	name="Dummy Model">
+	<args>-seed 1</args>
+
+	<parameter-values>
+	</parameter-values>
+
+</simulation>
