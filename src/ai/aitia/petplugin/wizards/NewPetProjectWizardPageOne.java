@@ -383,21 +383,21 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 				}
 		  }
 
-		private IProject chooseProject() {
+		  private IProject chooseProject() {
 
-			    ILabelProvider labelProvider = new JavaElementLabelProvider(
-			        JavaElementLabelProvider.SHOW_DEFAULT);
-			    ElementListSelectionDialog dialog = new ElementListSelectionDialog(
-			        getShell(), labelProvider);
-			    dialog.setTitle("Project Selection");
-			    dialog.setMessage("Choose your mason project");
-			    dialog.setElements(validMasonProjects.toArray(new IJavaProject[validMasonProjects.size()]));
-			    dialog.setHelpAvailable(false);
-			    if (dialog.open() == Window.OK) {
-			      return ((IJavaProject)dialog.getFirstResult()).getProject();
-			    }
-			    return null;
+			  ILabelProvider labelProvider = new JavaElementLabelProvider(
+					  JavaElementLabelProvider.SHOW_DEFAULT);
+			  ElementListSelectionDialog dialog = new ElementListSelectionDialog(
+					  getShell(), labelProvider);
+			  dialog.setTitle("Project Selection");
+			  dialog.setMessage("Choose your mason project");
+			  dialog.setElements(validMasonProjects.toArray(new IJavaProject[validMasonProjects.size()]));
+			  dialog.setHelpAvailable(false);
+			  if (dialog.open() == Window.OK) {
+				  return ((IJavaProject)dialog.getFirstResult()).getProject();
 			  }
+			  return null;
+		  }
 
 		  
 		  
@@ -814,7 +814,7 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 	
 	public IProject getMasonProject()
 	{
-		return fMasonProjectGroup.selectedProject;
+		return fMasonProjectGroup.masonProjectField.getText().equals("") ? null : fMasonProjectGroup.selectedProject;
 	}
 	
 	public String getMasonJarNames()

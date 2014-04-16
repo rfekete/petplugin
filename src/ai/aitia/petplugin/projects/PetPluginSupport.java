@@ -7,9 +7,10 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URL;
 import java.util.Arrays;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
+import java.util.LinkedList;
 import java.util.Properties;
 import java.util.Set;
 
@@ -17,14 +18,15 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
+import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.FileLocator;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jdt.core.IClasspathEntry;
@@ -36,9 +38,9 @@ import org.eclipse.ui.console.ConsolePlugin;
 import org.eclipse.ui.console.IConsole;
 import org.eclipse.ui.console.IConsoleManager;
 import org.eclipse.ui.console.MessageConsole;
+import org.osgi.framework.Bundle;
 
-import ai.aitia.petplugin.Activator;
-import ai.aitia.petplugin.natures.ProjectNature;
+import ai.aitia.petplugin.natures.PetNature;
 import ai.aitia.petplugin.utils.PetFileGenerator;
 import ai.aitia.petplugin.utils.PetZipUtils;
 import ai.aitia.petplugin.wizards.NewPetProjectWizardPageOne;
@@ -56,21 +58,14 @@ import com.google.gwt.eclipse.core.runtime.GWTRuntime;
 
 public class PetPluginSupport {
 
-	private static String bundleRoot;
 	private static IProject project;
 	private static IJavaProject javaProject;
 	private static MessageConsole petConsole;
 	private static NewPetProjectWizardPageOne pageOne;
+	private static NewPetProjectWizardPageTwo pageTwo;
 
 	static
 	{
-		URL url = Activator.getDefault().getBundle().getEntry("");
-		try {
-			bundleRoot = FileLocator.resolve(url).getPath();
-		} catch (IOException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
 		ConsolePlugin plugin = ConsolePlugin.getDefault();
 		IConsoleManager consoleManager = plugin.getConsoleManager();
 		petConsole = new MessageConsole("petConsole", null);
@@ -81,6 +76,7 @@ public class PetPluginSupport {
 
 
 		pageOne = _pageOne;
+		pageTwo = (NewPetProjectWizardPageTwo)pageOne.getNextPage();
 		project = createBaseProject();
 
 
@@ -98,15 +94,17 @@ public class PetPluginSupport {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
 		}
+
+		copyResources();
 		setGwtProperties();
 		setClassPath();
-		copyResources();
 		generateFiles();
-		copyMasonJars();
+		createMasonJars();
 		Job gwtCompile = new Job("compiling gwt resources...") {
 			public IStatus run(IProgressMonitor monitor) {
 				compileProject();
 				createPetiFile();
+				createModelDir();
 				try {
 					project.refreshLocal(IProject.DEPTH_INFINITE, null);
 				} catch (CoreException e) {
@@ -129,15 +127,8 @@ public class PetPluginSupport {
 		return javaProject;
 	}
 
-
-	/**
-	 * Just do the basics: create a basic project.
-	 *
-	 * @param location
-	 * @param projectName
-	 */
 	private static IProject createBaseProject() {
-		// it is acceptable to use the ResourcesPlugin class
+
 		IProject newProject = ResourcesPlugin.getWorkspace().getRoot().getProject(pageOne.getProjectName());
 
 		if (!newProject.exists()) {
@@ -176,12 +167,12 @@ public class PetPluginSupport {
 	}
 
 	private static void addNatures(IProject project) throws CoreException {
-		if (!project.hasNature(ProjectNature.NATURE_ID)) {
+		if (!project.hasNature(PetNature.NATURE_ID)) {
 			IProjectDescription description = project.getDescription();
 			String[] prevNatures = description.getNatureIds();
 			String[] newNatures = new String[prevNatures.length + 3];
 			System.arraycopy(prevNatures, 0, newNatures, 0, prevNatures.length);
-			newNatures[prevNatures.length] = ProjectNature.NATURE_ID;
+			newNatures[prevNatures.length] = PetNature.NATURE_ID;
 			newNatures[prevNatures.length+1] = JavaCore.NATURE_ID;
 			newNatures[prevNatures.length+2] = GWTNature.NATURE_ID;
 			description.setNatureIds(newNatures);
@@ -193,51 +184,55 @@ public class PetPluginSupport {
 
 	private static void copyResources()
 	{
-		File root = new File(bundleRoot+"resources/copy/common");
-		copyFile(root);
+		copyDirIntoProject("/resources/copy/common");
 		if(pageOne.isDefaultMasonProject())
-		{
-			root = new File(bundleRoot+"resources/copy/example");
-			copyFile(root);
-		}
+			copyDirIntoProject("/resources/copy/example");
 	}
 
-	private static void copyFile(File src)
+	public static URL getTemplateRootUrl() throws IOException
 	{
-		copyFile(src,src);
+		Bundle b = Platform.getBundle("ai.aitia.petplugin");
+		URL templateUrl = b.getEntry("/ai/aitia/petplugin/templates");
+		if(templateUrl!= null) 
+			return templateUrl;
+		else
+			return b.getEntry("/src/ai/aitia/petplugin/templates");
 	}
 
-	private static void copyFile(File src, File root)
+	private static void copyDirIntoProject(String dirPath)
 	{
-		try
+		Bundle b = Platform.getBundle("ai.aitia.petplugin");
+		Enumeration<URL> valami = b.findEntries(dirPath, "*", true);
+		while(valami.hasMoreElements())
 		{
-			String name = root.toURI().relativize(src.toURI()).getPath();
-			if (src.isDirectory())
+			URL url = valami.nextElement();
+			String relativePath = url.getPath().substring(dirPath.length());
+			if(url.getPath().endsWith("/"))
 			{
-				if(!name.equals(""))
-				{
-					IFolder folder = project.getFolder(name);
-					if(!folder.exists())folder.create(true, true, null);
+				IFolder ifo = project.getFolder(relativePath);
+				recursiveCreateIFolder(ifo);
+
+			}
+			else
+			{
+				try {
+					IFile ifi = project.getFile(relativePath);
+					if(!ifi.getParent().exists() && ifi.getParent() instanceof IFolder)
+						recursiveCreateIFolder((IFolder)ifi.getParent());
+					ifi.create(url.openStream(), true, null);
+				} catch (CoreException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
 				}
-				for (File nestedFile: src.listFiles())
-					copyFile(nestedFile, root);
-				return;
 			}
-			IFile file = project.getFile(name);
-			if(!file.exists())
-			{
-				FileInputStream srcInput = new FileInputStream(src);
-				file.create(srcInput, true, null);
-				srcInput.close();
-			}
-
 		}
-		catch(CoreException | IOException e)
-		{
-			e.printStackTrace();
-		}
-
 	}
+
+
+
 	public static File generatePetProperties(File defaultProperties)
 	{
 		Properties petProperties = new Properties();
@@ -250,9 +245,19 @@ public class PetPluginSupport {
 		return new File("");
 	}
 
-	public static String getBundleRoot()
+
+	private static void recursiveCreateIFolder(IFolder folder)
 	{
-		return bundleRoot;
+		IResource parent = folder.getParent();
+		if(!parent.exists() && parent instanceof IFolder)
+			recursiveCreateIFolder((IFolder)parent);
+		if(!folder.exists())
+			try {
+				folder.create(false, true, null);
+			} catch (CoreException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 	}
 
 	public static IJavaProject getJavaProject()
@@ -262,24 +267,25 @@ public class PetPluginSupport {
 
 	public static void setGwtProperties()
 	{
-		GWTRuntime runtime = GWTRuntime.getFactory().newInstance("Gwt Sdk", new Path("f:/Dokumentumok/gwt-2.5.1"));
-		String version = runtime.getVersion();
+		/*GWTRuntime runtime = GWTRuntime.getFactory().newInstance("Gwt Sdk", new Path("f:/Dokumentumok/gwt-2.5.1"));
+		GWTRuntime rt = GWTPreferences.getDefaultRuntime();
+		String version = runtime.getVersion();*/
 
 		SdkSet<GWTRuntime> prevSdks = GWTPreferences.getSdks();
 
 
 		for(GWTRuntime sdk : prevSdks)
 		{
-			if(sdk.getVersion().equals(version))
+			if(sdk.getVersion().equals("2.5.1"))
 			{
-				prevSdks.setDefault(runtime);
+				prevSdks.setDefault(sdk);
 				GWTPreferences.setSdks(prevSdks);
 				return;
 			}
 		}
-		prevSdks.add(runtime);
+		/*prevSdks.add(runtime);
 		prevSdks.setDefault(runtime);
-		GWTPreferences.setSdks(prevSdks);
+		GWTPreferences.setSdks(prevSdks);*/
 	}
 
 	public MessageConsole getPetConsole()
@@ -299,15 +305,16 @@ public class PetPluginSupport {
 	{
 		IPath warLocation = project.getFolder("war").getLocation();
 		IFile moduleFile = project.getFile(new Path("src/"+pageOne.getPackage().replace(".", "/")
-				.concat("/"+((NewPetProjectWizardPageTwo)pageOne.getNextPage()).getModelName().concat("GUI.gwt.xml"))));
+				.concat("/"+pageTwo.getModelName().concat("GUI.gwt.xml"))));
 		ModuleFile mf = ModuleUtils.create(moduleFile);
-		String qualifiedModuleName = mf.getQualifiedName();
+		String moduleName = mf.getQualifiedName();
 		GWTCompileSettings compileSettings = new GWTCompileSettings();
 		compileSettings.setVmArgs("-Xmx512m");
 		compileSettings.setLogLevel(GWTLaunchAttributes.LOG_LEVELS[0]);
 		compileSettings.setOutputStyle(GWTLaunchAttributes.OUTPUT_STYLES[0]);
 		compileSettings.setExtraArgs("");
-		compileSettings.setEntryPointModules(Arrays.asList(new String[]{qualifiedModuleName}));
+		compileSettings.setEntryPointModules(Arrays.asList(new String[]{moduleName}));
+
 
 		try {
 			GWTCompileRunner.compile(javaProject,warLocation, compileSettings,petConsole.newOutputStream(), null);
@@ -315,6 +322,21 @@ public class PetPluginSupport {
 				| InterruptedException | CoreException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
+		}
+	}
+
+
+	private static void createMasonJars()
+	{
+		if(!pageOne.getMasonJarNames().equals(""))
+		{
+			copyMasonJars();
+			return;
+		}
+		IProject masonProject = pageOne.getMasonProject();
+		if(masonProject!= null)
+		{
+
 		}
 	}
 
@@ -349,29 +371,101 @@ public class PetPluginSupport {
 
 	private static void createPetiFile()
 	{
-		HashMap<File, String> files = new HashMap<>();
-		files.put(project.getFile("model-config/simulation.xml").getLocation().toFile(), "");
-		files.put(project.getFile("model-config/family.xml").getLocation().toFile(), "");
-		files.put(project.getFile("war/WEB-INF/lib/mason-all-16.0.0-RELEASE.jar").getLocation().toFile(), "");
+		HashMap<String, String> filesToJar = new HashMap<>();
 
-		String warLocation =  project.getFolder("war").getLocation().toString().replace('/', '\\');
-		for(File f : new File(warLocation).listFiles())
-		{
-			if(!f.getPath().startsWith(warLocation+"\\WEB-INF") && !f.getPath().startsWith(warLocation+"\\META-INF"))
-				files.put(f, "WebContent");
-		}
 
-		for(String modelFileName : pageOne.getMasonJarNames().split(","))
+		final String petFileName = pageTwo.getModelName()+".petii";
+		final String dest = project.getFile(petFileName).getLocation()+"";
+
+		try
 		{
-			for(File f : new File(warLocation+"\\WEB-INF\\lib").listFiles())
+			filesToJar.put(project.getFile("model-config/simulation.xml").getLocation()+"" , "simulation.xml");
+			filesToJar.put(project.getFile("model-config/family.xml").getLocation()+"" , "family.xml");
+			filesToJar.put(project.getFile("war/WEB-INF/lib/mason-all-16.0.0-RELEASE.jar").getLocation()+"", "mason-all-16.0.0-RELEASE.jar");
+			String warLocation =  getWarDir().getLocation().toString().replace('/', '\\');
+			String masonJars = pageOne.getMasonJarNames();
+			if(!masonJars.trim().equals(""))
 			{
-				File modelFile = new File(modelFileName.trim());
-				if(modelFile.getName().equals(f.getName()))files.put(f, "");
+				for(String modelFileName : pageOne.getMasonJarNames().split(","))
+				{
+					for(File f : new File(warLocation+"\\WEB-INF\\lib").listFiles())
+					{
+						File modelFile = new File(modelFileName.trim());
+						if(modelFile.getName().equals(f.getName()))filesToJar.put(f.getPath(), f.getName());
+
+					}
+				}
 			}
+
+			if(pageOne.getMasonProject()!=null)
+			{
+				PetZipUtils.makeJar(PetZipUtils.jarMasonProject(pageOne.getMasonProject()), dest);
+				filesToJar.put(project.getFile("temp/"+pageTwo.getModelName()+".jar").getLocation()+"",pageTwo.getModelName()+".jar");
+			}
+
+
+			for(File f : new File(warLocation).listFiles())
+			{
+				if(!f.getPath().startsWith(warLocation+"\\WEB-INF") && !f.getPath().startsWith(warLocation+"\\META-INF"))
+					filesToJar.put(f.getPath(), "WebContent/"+f.getName());
+			}
+			PetZipUtils.makeJar(filesToJar, dest);
+			if(pageOne.getMasonProject()!=null)project.getFolder("temp").delete(true, null);
 		}
-		String petFileName = ((NewPetProjectWizardPageTwo)pageOne.getNextPage()).getModelName()+"petii";
-		PetZipUtils.writeFilesToZip(files, project.getFile(petFileName).getLocation()+"");
+		catch(IOException e)
+		{
+			e.printStackTrace();
+		} catch (CoreException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
 	}
 
+	public static IFolder getWarDir()
+	{
+		return project.getFolder("war");
+	}
 
+	public static String getMasonModelName()
+	{
+		return pageTwo.getModelName();
+	}
+
+	private static void createModelDir()
+	{
+		LinkedList<File> modelFiles = new LinkedList<>();
+		String modelName = pageTwo.getModelName();
+		File petFile = project.getFile(pageTwo.getModelName()+".petii").getLocation().toFile();
+		File modelConfigDir = project.getFolder("model-config").getLocation().toFile();
+
+		try {
+			project.getFolder("models/").create(true, true, null);
+			project.getFolder("models/"+modelName).create(true, true, null);
+			project.getFolder("models/"+modelName+"/models/").create(true, true, null);
+
+			for(File f : modelConfigDir.listFiles())
+			{
+				if(f.getName().matches("^simulation\\d*.xml$"))
+					modelFiles.add(f);
+			}
+			for(int i=0;i<modelFiles.size();i++)
+			{
+				IFile familyXml = project.getFile("models/"+modelName+"/models/"+(i+1)+".xml");
+				FileInputStream srcInput = new FileInputStream(modelFiles.get(i));
+				familyXml.create(srcInput, true, null);
+				srcInput.close();
+			}
+			project.getFile("models/"+modelName+"/"+modelName+".petii").create(new FileInputStream(petFile), true, null);
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (CoreException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
 }

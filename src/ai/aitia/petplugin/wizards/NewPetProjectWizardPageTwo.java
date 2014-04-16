@@ -1,25 +1,28 @@
 package ai.aitia.petplugin.wizards;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Observable;
 import java.util.Observer;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import javax.lang.model.SourceVersion;
 
-import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
@@ -30,7 +33,6 @@ import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.equinox.bidi.StructuredTextTypeHandlerFactory;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
-import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.internal.core.JavaProject;
@@ -59,7 +61,6 @@ import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.ui.dialogs.ElementListSelectionDialog;
 
-import ai.aitia.petplugin.projects.PetPluginSupport;
 import ai.aitia.petplugin.utils.PetZipUtils;
 import ai.aitia.petplugin.wizards.dialogfields.ButtonDialogField;
 
@@ -187,7 +188,8 @@ public class NewPetProjectWizardPageTwo extends WizardPage implements IPageChang
 		
 		private void loadClassesFromProject()
 		{
-			IJavaProject javaProject = null ;
+			IJavaProject javaProject = null;
+			HashSet<String> entriesToCheck = new HashSet<>();
 		    IProject project = ((NewPetProjectWizardPageOne)getPreviousPage()).getMasonProject();
 		    if(project==null)return;
 			ClassLoader cl = constructClassLoader();
@@ -196,34 +198,102 @@ public class NewPetProjectWizardPageTwo extends WizardPage implements IPageChang
 		      javaProject = JavaCore.create(project); 
 		      IClasspathEntry[] classpathEntries = null; 
 		      try {
-				classpathEntries = javaProject.getResolvedClasspath(true);
+				classpathEntries = javaProject.getRawClasspath();
 			} catch (JavaModelException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 		      for (IClasspathEntry entry : classpathEntries)
 		      {
-		        if (entry.getContentKind() == IPackageFragmentRoot.K_SOURCE) 
-		        {
-		        	File src;
+		    	  if(entry.getEntryKind() == IClasspathEntry.CPE_SOURCE)
+					{
+						if(entry.getOutputLocation()!=null)
+						{
+							entriesToCheck.add(project.getWorkspace().getRoot().getLocation()+""+entry.getOutputLocation());
+						}
+					}
+		      }
+		      try {
+				entriesToCheck.add(project.getWorkspace().getRoot().getLocation()+""+javaProject.getOutputLocation());
+			} catch (JavaModelException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		      checkEntries(entriesToCheck);
+		    }
+		}
+		
+		private void checkEntries(Set<String> entries)
+		{
+			try (final URLClassLoader cl = constructClassLoader()){
+			
+			final Class<?> simClass = cl.loadClass("sim.engine.SimState");
+			
+			for(String entry : entries)
+			{
+				final java.nio.file.Path src = Paths.get(entry);
+				if(!Files.isDirectory(src))
+				{
+					if(src.endsWith(".class"))
+					{
+						String relativePath = Paths.get(entry).relativize(src).toString();
+						try {
+							Class<?> c = cl.loadClass(relativePath.substring(0, relativePath.length()-6));
+						} catch (ClassNotFoundException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+					}
+				}
+				else
+				{
 					try {
-						src = ResourcesPlugin.getWorkspace().getRoot().getFolder(javaProject.getOutputLocation()).getLocation().toFile();
-						load(src, cl, src);
-					} catch (JavaModelException e) {
+						Files.walkFileTree(src, new SimpleFileVisitor<java.nio.file.Path>(){
+							@Override
+							public FileVisitResult visitFile(java.nio.file.Path file, BasicFileAttributes attrs) throws IOException {
+								if(file.toString().endsWith(".class"))
+								{
+									String filePath = src.relativize(file).toString().replace("\\", ".");
+									String className = filePath.substring(0, filePath.length()-6);
+									Class<?> currentClass;
+									try {
+										currentClass = cl.loadClass(className);
+										if(simClass.isAssignableFrom(currentClass))javaClasses.add(currentClass.getName());
+									} catch (ClassNotFoundException e) {
+										// TODO Auto-generated catch block
+										e.printStackTrace();
+									}
+								}
+								return FileVisitResult.CONTINUE;
+							}
+							
+							
+						});
+					} catch (IOException e) {
 						// TODO Auto-generated catch block
 						e.printStackTrace();
 					}
-		        } 
-		      } 
-		    }
+				}
+
+			}
+			}
+			catch (ClassNotFoundException e)
+			{
+				e.printStackTrace();
+			} 
+			catch (IOException e) 
+			{
+				e.printStackTrace();
+			}
+			
 		}
 		
 		private void loadClassesFromJars()
 		{
 			String[] jarPaths = ((NewPetProjectWizardPageOne)getPreviousPage()).getMasonJarNames().split(",");
 			if(jarPaths[0].equals(""))return;
-			try {
-				URLClassLoader loader = PetZipUtils.getJarClassLoader(((NewPetProjectWizardPageOne)getPreviousPage()).getMasonJarNames().split(","));
+			try (URLClassLoader loader = PetZipUtils.getJarClassLoader(((NewPetProjectWizardPageOne)getPreviousPage()).getMasonJarNames().split(","))) 
+			{
 				simState = loader.loadClass("sim.engine.SimState");
 				for(String jarPath: jarPaths)
 				{
@@ -240,26 +310,24 @@ public class NewPetProjectWizardPageTwo extends WizardPage implements IPageChang
 								javaClasses.add(currentClass.getName());
 							}
 						}
-						
+
 					}
 					modelJar.close();
 				}
-				
-				loader.close();
-			} catch (FileNotFoundException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (ClassNotFoundException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-			
+					} catch (FileNotFoundException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (ClassNotFoundException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+
 		}
 		
-		private void load(File src, ClassLoader cl, File root) {
+		/*private void load(File src, ClassLoader cl, File root) {
 			if(src.isDirectory())
 			{
 				for(File f : src.listFiles())load(f,cl, root);
@@ -277,7 +345,7 @@ public class NewPetProjectWizardPageTwo extends WizardPage implements IPageChang
 					e.printStackTrace();
 				}
 			}
-		}
+		}*/
 
 		
 		
@@ -458,6 +526,7 @@ public class NewPetProjectWizardPageTwo extends WizardPage implements IPageChang
 		{
 			Job gatheringSimClasses = new Job("gathering simulation classes...") {
 				public IStatus run(IProgressMonitor monitor) {
+					//PetZipUtils.jarMasonProject(((NewPetProjectWizardPageOne)getPreviousPage()).getMasonProject(), new File("majom.jar"));
 					javaClasses.clear();
 					fSimClassGroup.loadClassesFromProject();
 					fSimClassGroup.loadClassesFromJars();

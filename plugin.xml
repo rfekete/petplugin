@@ -21,9 +21,90 @@
          point="org.eclipse.core.resources.natures">
       <runtime>
          <run
-               class="ai.aitia.petplugin.natures.ProjectNature">
+               class="ai.aitia.petplugin.natures.PetNature">
          </run>
       </runtime>
+   </extension>
+   <extension
+         point="org.eclipse.debug.core.launchConfigurationTypes">
+      <launchConfigurationType
+            delegate="com.google.gdt.eclipse.suite.launch.WebAppLaunchDelegate"
+            delegateDescription="Runs a PET Application"
+            delegateName="PET Application Launcher"
+            id="ai.aitia.petplugin.petapp"
+            modes="run, debug"
+            name="PET Application"
+            sourceLocatorId="org.eclipse.jdt.launching.sourceLocator.JavaSourceLookupDirector"
+            sourcePathComputerId="org.eclipse.jdt.launching.sourceLookup.javaSourcePathComputer">
+      </launchConfigurationType>
+   </extension>
+   <extension
+         point="org.eclipse.debug.ui.launchConfigurationTabGroups">
+      <launchConfigurationTabGroup
+            class="ai.aitia.petplugin.launch.PetAppTabGroup"
+            id="ai.aitia.petplugin.pettab"
+            type="ai.aitia.petplugin.petapp">
+         <launchMode
+               mode="debug">
+         </launchMode>
+         <launchMode
+               mode="run">
+         </launchMode>
+      </launchConfigurationTabGroup>
+   </extension>
+   <extension
+         point="org.eclipse.debug.ui.launchConfigurationTypeImages">
+      <launchConfigurationTypeImage
+            configTypeID="ai.aitia.petplugin.petapp"
+            icon="resources/logo16x16.png"
+            id="ai.aitia.petplugin.petappImage">
+      </launchConfigurationTypeImage>
+   </extension>
+   
+   <extension
+         point="org.eclipse.debug.ui.launchShortcuts">
+      <shortcut
+            class="ai.aitia.petplugin.launch.ui.PetAppLaunchShortcut"
+            description="Launch PET Application"
+            icon="resources/logo16x16.png"
+            id="ai.aitia.petplugin.launch.ui.petAppLaunchShortcut"
+            label="Pet Application"
+            modes="run, debug">
+         <configurationType
+               id="ai.aitia.petplugin.petapp">
+         </configurationType>
+         <description
+               description="Run a PET Application"
+               mode="run">
+         </description>
+         <description
+               description="Debug a PET application"
+               mode="debug">
+         </description>
+         <contextualLaunch>
+            <enablement>
+               <with variable="selection">
+                  <count value= "1"/>
+                     <iterate>
+                        <!--
+                        see code in com.google.gdt.eclipse.suite.propertytesters.LaunchTargetTester.java
+                        -->
+                        <test property="ai.aitia.petplugin.isLaunchTarget"/>
+                     </iterate>
+               </with>
+            </enablement>
+         </contextualLaunch>
+      </shortcut>
+   </extension>
+   <extension
+         point="org.eclipse.core.expressions.propertyTesters">
+      <propertyTester
+            class="ai.aitia.petplugin.launch.PetLaunchTester"
+            id="ai.aitia.petplugin.petLaunchTester"
+            namespace="ai.aitia.petplugin"
+            properties="isLaunchTarget"
+            type="org.eclipse.core.runtime.IAdaptable">
+      </propertyTester>
    </extension>
 
 </plugin>

@@ -14,7 +14,7 @@
 		$simclassname
 	</simClassName>
 	<agentCreationFunction>
-	  createAgents
+	  $creationFunction
 	</agentCreationFunction>
 
 	<parameter-declarations>
