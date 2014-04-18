@@ -106,5 +106,10 @@
             type="org.eclipse.core.runtime.IAdaptable">
       </propertyTester>
    </extension>
+   <extension
+         point="org.eclipse.ui.startup">
+      <startup>
+      </startup>
+   </extension>
 
 </plugin>

@@ -61,7 +61,7 @@ import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.ui.dialogs.ElementListSelectionDialog;
 
-import ai.aitia.petplugin.utils.PetZipUtils;
+import ai.aitia.petplugin.utils.PetFileUtils;
 import ai.aitia.petplugin.wizards.dialogfields.ButtonDialogField;
 
 @SuppressWarnings("restriction")
@@ -109,9 +109,6 @@ public class NewPetProjectWizardPageTwo extends WizardPage implements IPageChang
 			fNameField.setText(name);
 		}
 
-		/* (non-Javadoc)
-		 * @see org.eclipse.jdt.internal.ui.wizards.dialogfields.IDialogFieldListener#dialogFieldChanged(org.eclipse.jdt.internal.ui.wizards.dialogfields.DialogField)
-		 */
 		public void dialogFieldChanged(DialogField field) {
 			fireEvent();
 		}
@@ -121,9 +118,7 @@ public class NewPetProjectWizardPageTwo extends WizardPage implements IPageChang
 
 		protected final ButtonDialogField fSimClassField;
 		private Class<?> simState = null;
-
-		private static final String DIALOGSTORE_LAST_EXTERNAL_LOC= JavaUI.ID_PLUGIN + ".last.external.project"; //$NON-NLS-1$
-
+		
 		public SimClassGroup() {
 
 
@@ -145,18 +140,13 @@ public class NewPetProjectWizardPageTwo extends WizardPage implements IPageChang
 			new Label(locationComposite, SWT.NONE);
 
 			fSimClassField.doFillIntoGrid(locationComposite, 2);
-			
-			//fSimClassField.doFillIntoGrid(locationComposite, numColumns);
-			
+
 			LayoutUtil.setHorizontalGrabbing(fSimClassField.getTextControl(composite));
 			BidiUtils.applyBidiProcessing(fSimClassField.getTextControl(null), StructuredTextTypeHandlerFactory.FILE);
 
 			return locationComposite;
 		}
 
-		/* (non-Javadoc)
-		 * @see org.eclipse.jdt.internal.ui.wizards.dialogfields.IStringButtonAdapter#changeControlPressed(org.eclipse.jdt.internal.ui.wizards.dialogfields.DialogField)
-		 */
 		public void changeControlPressed(DialogField field) {
 			fSimClassField.setText(chooseSimClass());
 			fireEvent();
@@ -190,7 +180,7 @@ public class NewPetProjectWizardPageTwo extends WizardPage implements IPageChang
 		{
 			IJavaProject javaProject = null;
 			HashSet<String> entriesToCheck = new HashSet<>();
-		    IProject project = ((NewPetProjectWizardPageOne)getPreviousPage()).getMasonProject();
+		    IProject project = ((NewPetProjectWizardPageOne)getPreviousPage()).getMasonProject().getProject();
 		    if(project==null)return;
 			ClassLoader cl = constructClassLoader();
 
@@ -292,7 +282,7 @@ public class NewPetProjectWizardPageTwo extends WizardPage implements IPageChang
 		{
 			String[] jarPaths = ((NewPetProjectWizardPageOne)getPreviousPage()).getMasonJarNames().split(",");
 			if(jarPaths[0].equals(""))return;
-			try (URLClassLoader loader = PetZipUtils.getJarClassLoader(((NewPetProjectWizardPageOne)getPreviousPage()).getMasonJarNames().split(","))) 
+			try (URLClassLoader loader = PetFileUtils.getJarClassLoader(((NewPetProjectWizardPageOne)getPreviousPage()).getMasonJarNames().split(","))) 
 			{
 				simState = loader.loadClass("sim.engine.SimState");
 				for(String jarPath: jarPaths)
@@ -327,33 +317,11 @@ public class NewPetProjectWizardPageTwo extends WizardPage implements IPageChang
 
 		}
 		
-		/*private void load(File src, ClassLoader cl, File root) {
-			if(src.isDirectory())
-			{
-				for(File f : src.listFiles())load(f,cl, root);
-			}
-			else if(src.getName().endsWith(".class"))
-			{
-				String className = root.toURI().relativize(src.toURI()).getPath().replace("/", ".");
-				className = className.substring(0, className.length()-6);
-				try {
-					Class<?> c = cl.loadClass(className);
-					if(simState!=null && simState.isAssignableFrom(c))
-						javaClasses.add(c.getName());
-				} catch (ClassNotFoundException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
-		}*/
-
-		
-		
 		private URLClassLoader constructClassLoader()
 		{
 		    URLClassLoader classLoader = null;
 		    IJavaProject javaProject = null ;
-		    IProject project = ((NewPetProjectWizardPageOne)getPreviousPage()).getMasonProject();
+		    IProject project = ((NewPetProjectWizardPageOne)getPreviousPage()).getMasonProject().getProject();
 		    if (project.isOpen() && JavaProject.hasJavaNature(project))
 			      javaProject = JavaCore.create(project); 
 		    

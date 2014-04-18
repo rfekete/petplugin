@@ -57,7 +57,8 @@ import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.ui.dialogs.ElementListSelectionDialog;
 
-import ai.aitia.petplugin.utils.PetZipUtils;
+import ai.aitia.petplugin.projects.PetPluginSupport;
+import ai.aitia.petplugin.utils.PetFileUtils;
 
 
 @SuppressWarnings("restriction")
@@ -300,19 +301,19 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 
 		private static final String DIALOGSTORE_LAST_EXTERNAL_LOC= JavaUI.ID_PLUGIN + ".last.external.project"; //$NON-NLS-1$
 		
-		private final SelectionButtonDialogField masonProjectRadio, masonFileRadio,fUseDefaults;
+		private final SelectionButtonDialogField masonProjectRadio, masonFileRadio,fUseExistingModel;
 		private final StringButtonDialogField masonProjectField, masonFileField;
 		private Group fGroup;
-		private IProject selectedProject = null;
+		private IJavaProject selectedProject = null;
 		private LinkedList<IJavaProject> validMasonProjects = new LinkedList<>();
 		private String previousExternalJarLocation;
 
 		public MasonProjectGroup() {
 			
-			fUseDefaults= new SelectionButtonDialogField(SWT.CHECK);
-			fUseDefaults.setDialogFieldListener(this);
-			fUseDefaults.setLabelText("Use existing mason project");
-			fUseDefaults.setSelection(false);
+			fUseExistingModel= new SelectionButtonDialogField(SWT.CHECK);
+			fUseExistingModel.setDialogFieldListener(this);
+			fUseExistingModel.setLabelText("Use existing mason project");
+			fUseExistingModel.setSelection(false);
 			
 			masonProjectField = new StringButtonDialogField(this);
 			masonFileField = new StringButtonDialogField(this);
@@ -383,7 +384,7 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 				}
 		  }
 
-		  private IProject chooseProject() {
+		  private IJavaProject chooseProject() {
 
 			  ILabelProvider labelProvider = new JavaElementLabelProvider(
 					  JavaElementLabelProvider.SHOW_DEFAULT);
@@ -394,7 +395,7 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 			  dialog.setElements(validMasonProjects.toArray(new IJavaProject[validMasonProjects.size()]));
 			  dialog.setHelpAvailable(false);
 			  if (dialog.open() == Window.OK) {
-				  return ((IJavaProject)dialog.getFirstResult()).getProject();
+				  return ((IJavaProject)dialog.getFirstResult());
 			  }
 			  return null;
 		  }
@@ -407,7 +408,7 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 			fGroup.setLayout(new GridLayout(4,false));
 			fGroup.setText("Mason Project");
 			
-			fUseDefaults.doFillIntoGrid(fGroup, 4);
+			fUseExistingModel.doFillIntoGrid(fGroup, 4);
 			
 			new Label(fGroup, SWT.NONE);
 			masonProjectRadio.attachDialogField(masonProjectField);
@@ -435,12 +436,12 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 		
 		public boolean isImportFileSelected()
 		{
-			return masonFileRadio.isSelected() && fUseDefaults.isSelected();
+			return masonFileRadio.isSelected() && fUseExistingModel.isSelected();
 		}
 		
 		public boolean isImportProjectSelected()
 		{
-			return masonProjectRadio.isSelected() && fUseDefaults.isSelected();
+			return masonProjectRadio.isSelected() && fUseExistingModel.isSelected();
 		}
 		
 		public String getFileLocation()
@@ -478,7 +479,7 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 			{
 				if(javaProject.getProject().getName().equals(masonProjectField.getText()))
 					{
-						selectedProject = javaProject.getProject();
+						selectedProject = javaProject;
 						return true;
 					}
 			}
@@ -516,8 +517,8 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 
 		@Override
 		public void dialogFieldChanged(DialogField field) {
-			if (field == fUseDefaults) {
-				setControlState(fUseDefaults.isSelected());
+			if (field == fUseExistingModel) {
+				setControlState(fUseExistingModel.isSelected());
 			}
 			if(field == masonProjectRadio)
 			{
@@ -657,7 +658,7 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 			
 			isNameAndPackageValid = true;
 			
-			if(fMasonProjectGroup.fUseDefaults.isSelected())setPageComplete(false);
+			if(fMasonProjectGroup.fUseExistingModel.isSelected())setPageComplete(false);
 			
 			if(fMasonProjectGroup.isImportFileSelected() && fMasonProjectGroup.getFileLocation().isEmpty())
 			{
@@ -687,7 +688,7 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 			if(fMasonProjectGroup.isImportFileSelected())
 			{
 				String[] fileNames = fMasonProjectGroup.getFileLocation().split(",");
-					String error = PetZipUtils.isMasonModel(fileNames);
+					String error = PetFileUtils.isMasonModel(fileNames);
 					if(!error.equals(""))
 					{
 						setErrorMessage(error);
@@ -812,7 +813,7 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 		return fPackageGroup.getName();
 	}
 	
-	public IProject getMasonProject()
+	public IJavaProject getMasonProject()
 	{
 		return fMasonProjectGroup.masonProjectField.getText().equals("") ? null : fMasonProjectGroup.selectedProject;
 	}
@@ -824,13 +825,13 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 	
 	@Override
 	public boolean canFlipToNextPage() {
-		String error = PetZipUtils.isMasonModel(fMasonProjectGroup.masonFileField.getText().split(","));
-		return isNameAndPackageValid && fMasonProjectGroup.fUseDefaults.isSelected() && (fMasonProjectGroup.isValidProject() || error.equals(""));
+		String error = PetFileUtils.isMasonModel(fMasonProjectGroup.masonFileField.getText().split(","));
+		return isNameAndPackageValid && fMasonProjectGroup.fUseExistingModel.isSelected() && (fMasonProjectGroup.isValidProject() || error.equals(""));
 	}
 	
 	public boolean isDefaultMasonProject()
 	{
-		return !fMasonProjectGroup.fUseDefaults.isSelected();
+		return !fMasonProjectGroup.fUseExistingModel.isSelected();
 	}
 	
 	@Override
@@ -840,6 +841,11 @@ public class NewPetProjectWizardPageOne extends WizardPage{
 			fNameGroup.postSetFocus();
 		}
 	}
-
-
+	
+	public int getMasonType()
+	{
+		if(!fMasonProjectGroup.fUseExistingModel.isSelected())return PetPluginSupport.DEFAULT_MASON_MODEL;
+		else if(fMasonProjectGroup.isImportFileSelected())return PetPluginSupport.JAR_MASON_MODEL;
+		else return PetPluginSupport.PROJECT_MASON_MODEL;
+	}
 }

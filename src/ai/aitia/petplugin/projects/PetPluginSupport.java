@@ -19,6 +19,9 @@ import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.IResourceChangeEvent;
+import org.eclipse.core.resources.IResourceChangeListener;
+import org.eclipse.core.resources.ProjectScope;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
@@ -34,15 +37,17 @@ import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.launching.JavaRuntime;
+import org.eclipse.jface.preference.PreferenceStore;
 import org.eclipse.ui.console.ConsolePlugin;
 import org.eclipse.ui.console.IConsole;
 import org.eclipse.ui.console.IConsoleManager;
 import org.eclipse.ui.console.MessageConsole;
+import org.eclipse.ui.preferences.ScopedPreferenceStore;
 import org.osgi.framework.Bundle;
 
 import ai.aitia.petplugin.natures.PetNature;
 import ai.aitia.petplugin.utils.PetFileGenerator;
-import ai.aitia.petplugin.utils.PetZipUtils;
+import ai.aitia.petplugin.utils.PetFileUtils;
 import ai.aitia.petplugin.wizards.NewPetProjectWizardPageOne;
 import ai.aitia.petplugin.wizards.NewPetProjectWizardPageTwo;
 
@@ -56,13 +61,22 @@ import com.google.gwt.eclipse.core.nature.GWTNature;
 import com.google.gwt.eclipse.core.preferences.GWTPreferences;
 import com.google.gwt.eclipse.core.runtime.GWTRuntime;
 
-public class PetPluginSupport {
+public class PetPluginSupport{
 
 	private static IProject project;
 	private static IJavaProject javaProject;
 	private static MessageConsole petConsole;
 	private static NewPetProjectWizardPageOne pageOne;
 	private static NewPetProjectWizardPageTwo pageTwo;
+
+	public static final int DEFAULT_MASON_MODEL = 1;  
+	public static final int PROJECT_MASON_MODEL = 2;  
+	public static final int JAR_MASON_MODEL = 3;
+
+	public static final String PREF_MASON_MODEL_NAME = "mason.model.name";
+	public static final String PREF_MASON_PROJECT_NAME = "mason.project.name";
+
+	private static int masonType = 0;
 
 	static
 	{
@@ -79,7 +93,6 @@ public class PetPluginSupport {
 		pageTwo = (NewPetProjectWizardPageTwo)pageOne.getNextPage();
 		project = createBaseProject();
 
-
 		try {
 			addNatures(project);
 			project.getFolder("src").create(true, true, null);
@@ -95,6 +108,13 @@ public class PetPluginSupport {
 			e1.printStackTrace();
 		}
 
+		masonType = pageOne.getMasonType();
+
+
+		savePreferences(project);
+
+		if(masonType == PROJECT_MASON_MODEL) project.getWorkspace().addResourceChangeListener(new PetResourceChangeListener(getPreference(project ,PREF_MASON_PROJECT_NAME), project));
+
 		copyResources();
 		setGwtProperties();
 		setClassPath();
@@ -103,8 +123,8 @@ public class PetPluginSupport {
 		Job gwtCompile = new Job("compiling gwt resources...") {
 			public IStatus run(IProgressMonitor monitor) {
 				compileProject();
-				createPetiFile();
-				createModelDir();
+				createPetiFile(project);
+				createModelDir(project);
 				try {
 					project.refreshLocal(IProject.DEPTH_INFINITE, null);
 				} catch (CoreException e) {
@@ -126,6 +146,8 @@ public class PetPluginSupport {
 		}
 		return javaProject;
 	}
+
+	private PetPluginSupport(){}
 
 	private static IProject createBaseProject() {
 
@@ -231,21 +253,6 @@ public class PetPluginSupport {
 		}
 	}
 
-
-
-	public static File generatePetProperties(File defaultProperties)
-	{
-		Properties petProperties = new Properties();
-		try {
-			petProperties.load(new FileInputStream(defaultProperties));
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		return new File("");
-	}
-
-
 	private static void recursiveCreateIFolder(IFolder folder)
 	{
 		IResource parent = folder.getParent();
@@ -288,7 +295,7 @@ public class PetPluginSupport {
 		GWTPreferences.setSdks(prevSdks);*/
 	}
 
-	public MessageConsole getPetConsole()
+	public static MessageConsole getPetConsole()
 	{
 		return petConsole;
 	}
@@ -328,12 +335,12 @@ public class PetPluginSupport {
 
 	private static void createMasonJars()
 	{
-		if(!pageOne.getMasonJarNames().equals(""))
+		if(masonType == JAR_MASON_MODEL)
 		{
 			copyMasonJars();
 			return;
 		}
-		IProject masonProject = pageOne.getMasonProject();
+		IJavaProject masonProject = pageOne.getMasonProject();
 		if(masonProject!= null)
 		{
 
@@ -369,13 +376,24 @@ public class PetPluginSupport {
 		}
 	}
 
-	private static void createPetiFile()
+	private static IJavaProject getJavaProject(String projectName)
+	{
+		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+		IJavaProject javaProject = null;
+		if(project.exists() && project.isOpen())
+		{
+			javaProject = JavaCore.create(project);
+		}
+		return javaProject;
+	}
+
+	private static void createPetiFile(IProject project)
 	{
 		HashMap<String, String> filesToJar = new HashMap<>();
 
-
-		final String petFileName = pageTwo.getModelName()+".petii";
+		final String petFileName = getPreference(project ,PREF_MASON_MODEL_NAME)+".petii";
 		final String dest = project.getFile(petFileName).getLocation()+"";
+		final String tempDest = project.getFile("temp/"+getPreference(project ,PREF_MASON_MODEL_NAME)+".jar").getLocation()+"";
 
 		try
 		{
@@ -383,8 +401,7 @@ public class PetPluginSupport {
 			filesToJar.put(project.getFile("model-config/family.xml").getLocation()+"" , "family.xml");
 			filesToJar.put(project.getFile("war/WEB-INF/lib/mason-all-16.0.0-RELEASE.jar").getLocation()+"", "mason-all-16.0.0-RELEASE.jar");
 			String warLocation =  getWarDir().getLocation().toString().replace('/', '\\');
-			String masonJars = pageOne.getMasonJarNames();
-			if(!masonJars.trim().equals(""))
+			if(masonType == JAR_MASON_MODEL)
 			{
 				for(String modelFileName : pageOne.getMasonJarNames().split(","))
 				{
@@ -397,10 +414,11 @@ public class PetPluginSupport {
 				}
 			}
 
-			if(pageOne.getMasonProject()!=null)
+			if(masonType == PROJECT_MASON_MODEL)
 			{
-				PetZipUtils.makeJar(PetZipUtils.jarMasonProject(pageOne.getMasonProject()), dest);
-				filesToJar.put(project.getFile("temp/"+pageTwo.getModelName()+".jar").getLocation()+"",pageTwo.getModelName()+".jar");
+				PetFileUtils.makeJar(PetFileUtils.jarMasonProject(pageOne.getMasonProject(),tempDest), dest);
+				String modelName = getPreference(project , PREF_MASON_MODEL_NAME);
+				filesToJar.put(project.getFile("temp/"+modelName+".jar").getLocation()+"",modelName+".jar");
 			}
 
 
@@ -409,8 +427,8 @@ public class PetPluginSupport {
 				if(!f.getPath().startsWith(warLocation+"\\WEB-INF") && !f.getPath().startsWith(warLocation+"\\META-INF"))
 					filesToJar.put(f.getPath(), "WebContent/"+f.getName());
 			}
-			PetZipUtils.makeJar(filesToJar, dest);
-			if(pageOne.getMasonProject()!=null)project.getFolder("temp").delete(true, null);
+			PetFileUtils.makeJar(filesToJar, dest);
+			if(masonType == PROJECT_MASON_MODEL)project.getFolder("temp").delete(true, null);
 		}
 		catch(IOException e)
 		{
@@ -427,16 +445,31 @@ public class PetPluginSupport {
 		return project.getFolder("war");
 	}
 
-	public static String getMasonModelName()
+
+	public static void savePreferences(IProject project)
 	{
-		return pageTwo.getModelName();
+		ScopedPreferenceStore petPrefStore = new ScopedPreferenceStore(new ProjectScope(project), "ai.aitia.petplugin");
+		if(pageOne.getMasonProject()!=null) petPrefStore.putValue("mason.project.name", pageOne.getMasonProject().getProject().getName());
+		if(pageTwo.getModelName()!=null) petPrefStore.putValue("mason.model.name", pageTwo.getModelName());
+		try {
+			petPrefStore.save();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 
-	private static void createModelDir()
+	public static String getPreference(IProject project ,String name)
+	{
+		ScopedPreferenceStore petPrefStore = new ScopedPreferenceStore(new ProjectScope(project), "ai.aitia.petplugin");
+		return petPrefStore.getString(name);
+	}
+
+	private static void createModelDir(IProject project)
 	{
 		LinkedList<File> modelFiles = new LinkedList<>();
-		String modelName = pageTwo.getModelName();
-		File petFile = project.getFile(pageTwo.getModelName()+".petii").getLocation().toFile();
+		String modelName = getPreference(project ,PREF_MASON_MODEL_NAME);
+		File petFile = project.getFile(modelName+".petii").getLocation().toFile();
 		File modelConfigDir = project.getFolder("model-config").getLocation().toFile();
 
 		try {
@@ -468,4 +501,5 @@ public class PetPluginSupport {
 			e.printStackTrace();
 		}
 	}
+
 }
